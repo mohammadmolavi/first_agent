@@ -45,8 +45,21 @@ def create_server() -> WeatherMCPServer:
     return WeatherMCPServer(api_key=get_api_key())
 
 
+@app.get("/")
+async def root() -> JSONResponse:
+    """Root endpoint for health checks - doesn't require API key"""
+    api_key_set = bool(os.getenv("WEATHER_API_KEY"))
+    return JSONResponse({
+        "status": "ok",
+        "service": "Weather MCP Server",
+        "version": "1.0.0",
+        "api_key_configured": api_key_set
+    })
+
+
 @app.get("/healthz")
 async def healthz() -> JSONResponse:
+    """Health check endpoint - doesn't require API key"""
     return JSONResponse({"status": "ok"})
 
 
