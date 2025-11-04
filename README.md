@@ -109,24 +109,36 @@ curl "http://localhost:8000/search_locations?query=Paris"
 
 #### Step 3: Expose Publicly (Required for OpenAI Agent Builder)
 
-OpenAI Agent Builder needs a publicly accessible URL. Use one of these options:
+OpenAI Agent Builder needs a **globally accessible HTTPS URL**. Use one of these options:
 
-**Option A: Using ngrok (Quick Testing)**
+**Option A: Self-Hosted + ngrok (Works Everywhere - Recommended)**
 ```bash
 # Install ngrok: https://ngrok.com/download
+# In one terminal: Start server
+uvicorn http_bridge:app --host 0.0.0.0 --port 8000
+
+# In another terminal: Expose publicly
 ngrok http 8000
 # Copy the HTTPS URL (e.g., https://abcd-1234.ngrok-free.app)
 ```
+**This creates a global HTTPS URL** that OpenAI Agent Builder can use!
 
-**Option B: Deploy to Cloud (Production)**
+**Option B: Self-Hosted + Cloudflare Tunnel (Free, Permanent)**
+```bash
+# Install cloudflared
+cloudflared tunnel --url http://localhost:8000
+# Get your permanent URL
+```
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions. Quick options:
+**Option C: Deploy to Cloud (Production)**
 
-- **Render**: Free tier, auto-deploy from GitHub (recommended)
+See [DEPLOYMENT.md](DEPLOYMENT.md) and [QUICK_START.md](QUICK_START.md) for detailed instructions. Options:
+
+- **PythonAnywhere**: Free tier (may work from restricted regions)
+- **Railway**: Free trial, auto-deploy from GitHub
 - **Fly.io**: Free tier, great performance
-- **Railway**: Simple deployment
-- **Google Cloud Run**: Container-based
-- **Docker**: Deploy anywhere with Docker support
+- **VPS**: Most reliable, requires hosting
+- **Render**: May not work from all regions
 
 All deployment configurations are included in this repository.
 
