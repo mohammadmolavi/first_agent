@@ -9,20 +9,33 @@ formatting logic from WeatherMCPServer.
 
 import os
 import asyncio
+import logging
 from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-# Local import of the existing MCP server to reuse formatting logic
-from weather_mcp_server import WeatherMCPServer  # type: ignore
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Try to import weather server - delay import to avoid startup errors
+try:
+    from weather_mcp_server import WeatherMCPServer  # type: ignore
+except ImportError as e:
+    logger.error(f"Failed to import WeatherMCPServer: {e}")
+    WeatherMCPServer = None
 
 
 def get_api_key() -> str:
+    """Get API key from environment, with better error message"""
     api_key = os.getenv("WEATHER_API_KEY")
     if not api_key:
-        raise RuntimeError("WEATHER_API_KEY environment variable is required")
+        raise RuntimeError(
+            "WEATHER_API_KEY environment variable is required. "
+            "Please set it in Railway Variables section."
+        )
     return api_key
 
 
@@ -33,8 +46,13 @@ app = FastAPI(
 )
 
 
-async def fetch(server: WeatherMCPServer, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+async def fetch(server, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Call the upstream weather API using the same method the MCP server uses."""
+    if server is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Weather server not initialized. Check server logs."
+        )
     try:
         return await server._make_api_request(endpoint, params)  # noqa: SLF001
     except Exception as exc:  # pragma: no cover - passthrough to HTTP error
@@ -42,7 +60,20 @@ async def fetch(server: WeatherMCPServer, endpoint: str, params: Dict[str, Any])
 
 
 def create_server() -> WeatherMCPServer:
-    return WeatherMCPServer(api_key=get_api_key())
+    """Create weather server instance, with error handling"""
+    if WeatherMCPServer is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Weather server module not available. Check server logs."
+        )
+    try:
+        return WeatherMCPServer(api_key=get_api_key())
+    except RuntimeError as e:
+        logger.error(f"Failed to create server: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=str(e)
+        )
 
 
 @app.get("/")
