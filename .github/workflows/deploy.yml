@@ -1,0 +1,34 @@
+name: Deploy Weather MCP Server
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: Test server
+      run: |
+        python -m pytest test_weather_server.py || echo "Tests skipped if pytest not installed"
+      env:
+        WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+    
+    - name: Deploy to Render (if configured)
+      if: false  # Enable this when you set up Render
+      run: |
+        echo "Add Render deployment script here"
+

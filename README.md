@@ -120,11 +120,15 @@ ngrok http 8000
 
 **Option B: Deploy to Cloud (Production)**
 
-Deploy the FastAPI app to:
-- **Render**: `render.yaml` with FastAPI service
-- **Fly.io**: `fly.toml` configuration
-- **Google Cloud Run**: Container deployment
-- **AWS Lambda**: Using Mangum adapter
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions. Quick options:
+
+- **Render**: Free tier, auto-deploy from GitHub (recommended)
+- **Fly.io**: Free tier, great performance
+- **Railway**: Simple deployment
+- **Google Cloud Run**: Container-based
+- **Docker**: Deploy anywhere with Docker support
+
+All deployment configurations are included in this repository.
 
 #### Step 4: Register in OpenAI Agent Builder
 

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: weather-mcp-server
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn http_bridge:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: WEATHER_API_KEY
+        sync: false  # Set this in Render dashboard
+    healthCheckPath: /healthz
+
