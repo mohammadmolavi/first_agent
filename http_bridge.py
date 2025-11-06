@@ -42,8 +42,48 @@ def get_api_key() -> str:
 app = FastAPI(
     title="Weather Tools HTTP Bridge",
     version="1.0.0",
-    description="HTTP wrapper for Weather MCP tools, suitable for OpenAI Agent Builder Actions."
+    description="HTTP wrapper for Weather MCP tools, suitable for OpenAI Agent Builder Actions.",
+    servers=[
+        {
+            "url": "https://web-production-73dc9.up.railway.app",
+            "description": "Production server"
+        }
+    ]
 )
+
+# Customize OpenAPI schema for OpenAI Agent Builder
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    from fastapi.openapi.utils import get_openapi
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        servers=app.servers,
+    )
+    
+    # Ensure all endpoints have proper operationId and tags
+    for path, methods in openapi_schema.get("paths", {}).items():
+        for method, details in methods.items():
+            if isinstance(details, dict):
+                # Add tags if missing
+                if "tags" not in details:
+                    details["tags"] = ["weather"]
+                # Ensure operationId exists
+                if "operationId" not in details:
+                    details["operationId"] = f"{method}_{path.replace('/', '_').replace('-', '_')}"
+                # Add better descriptions
+                if "summary" not in details:
+                    details["summary"] = details.get("description", "Weather API endpoint")
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 
 async def fetch(server, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -76,7 +116,7 @@ def create_server() -> WeatherMCPServer:
         )
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root() -> JSONResponse:
     """Root endpoint for health checks - doesn't require API key"""
     api_key_set = bool(os.getenv("WEATHER_API_KEY"))
@@ -88,13 +128,19 @@ async def root() -> JSONResponse:
     })
 
 
-@app.get("/healthz")
+@app.get("/healthz", include_in_schema=False)
 async def healthz() -> JSONResponse:
     """Health check endpoint - doesn't require API key"""
     return JSONResponse({"status": "ok"})
 
 
-@app.get("/get_current_weather")
+@app.get(
+    "/get_current_weather",
+    summary="Get Current Weather",
+    description="Get current weather conditions for any location",
+    tags=["weather"],
+    response_description="Current weather data for the specified location"
+)
 async def get_current_weather(
     location: str = Query(..., description="City name, coordinates (lat,lon), or postal code"),
     include_air_quality: bool = Query(False, description="Include air quality data"),
@@ -107,7 +153,13 @@ async def get_current_weather(
     return JSONResponse(server._format_current_weather(data))  # noqa: SLF001
 
 
-@app.get("/get_weather_forecast")
+@app.get(
+    "/get_weather_forecast",
+    summary="Get Weather Forecast",
+    description="Get weather forecast for 1-10 days",
+    tags=["weather"],
+    response_description="Weather forecast data"
+)
 async def get_weather_forecast(
     location: str = Query(..., description="City name, coordinates (lat,lon), or postal code"),
     days: int = Query(3, ge=1, le=10, description="Number of forecast days (1-10)"),
@@ -121,7 +173,13 @@ async def get_weather_forecast(
     return JSONResponse(server._format_forecast(data))  # noqa: SLF001
 
 
-@app.get("/get_weather_history")
+@app.get(
+    "/get_weather_history",
+    summary="Get Weather History",
+    description="Get historical weather data for specific dates",
+    tags=["weather"],
+    response_description="Historical weather data"
+)
 async def get_weather_history(
     location: str = Query(..., description="City name, coordinates (lat,lon), or postal code"),
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
@@ -135,7 +193,13 @@ async def get_weather_history(
     return JSONResponse(server._format_history(data))  # noqa: SLF001
 
 
-@app.get("/search_locations")
+@app.get(
+    "/search_locations",
+    summary="Search Locations",
+    description="Search for locations by name",
+    tags=["weather"],
+    response_description="List of matching locations"
+)
 async def search_locations(
     query: str = Query(..., description="Location name to search for"),
 ):
@@ -157,7 +221,13 @@ async def search_locations(
     return JSONResponse({"locations": locations})
 
 
-@app.get("/get_astronomy_data")
+@app.get(
+    "/get_astronomy_data",
+    summary="Get Astronomy Data",
+    description="Get sunrise, sunset, moon phase, and other astronomy data",
+    tags=["weather"],
+    response_description="Astronomy data for the specified location"
+)
 async def get_astronomy_data(
     location: str = Query(..., description="City name, coordinates (lat,lon), or postal code"),
     date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format (optional, defaults to today)"),
