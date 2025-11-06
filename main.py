@@ -12,7 +12,12 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 # Import app - this might fail but we'll handle it
 try:
-    from http_bridge import app
+    # Use MCP HTTP bridge for Agent Builder MCP support
+    try:
+        from mcp_http_bridge import app
+    except ImportError:
+        # Fallback to regular HTTP bridge
+        from http_bridge import app
 except Exception as e:
     print(f"Error importing app: {e}", file=sys.stderr)
     sys.exit(1)
