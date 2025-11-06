@@ -11,10 +11,12 @@ import os
 import asyncio
 import logging
 from typing import Any, Dict, Optional
+from pydantic import BaseModel, Field
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -85,6 +87,37 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
+# Add CORS middleware for OpenAI Agent Builder
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Request/Response models for OpenAI Agent Builder
+class WeatherRequest(BaseModel):
+    location: str = Field(..., description="City name, coordinates (lat,lon), or postal code")
+    include_air_quality: Optional[bool] = Field(False, description="Include air quality data")
+
+class ForecastRequest(BaseModel):
+    location: str = Field(..., description="City name, coordinates (lat,lon), or postal code")
+    days: Optional[int] = Field(3, ge=1, le=10, description="Number of forecast days (1-10)")
+    include_air_quality: Optional[bool] = Field(False, description="Include air quality data")
+
+class HistoryRequest(BaseModel):
+    location: str = Field(..., description="City name, coordinates (lat,lon), or postal code")
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    end_date: Optional[str] = Field(None, description="End date in YYYY-MM-DD format (optional)")
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., description="Location name to search for")
+
+class AstronomyRequest(BaseModel):
+    location: str = Field(..., description="City name, coordinates (lat,lon), or postal code")
+    date: Optional[str] = Field(None, description="Date in YYYY-MM-DD format (optional, defaults to today)")
+
 
 async def fetch(server, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Call the upstream weather API using the same method the MCP server uses."""
@@ -134,77 +167,64 @@ async def healthz() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-@app.get(
+@app.post(
     "/get_current_weather",
     summary="Get Current Weather",
     description="Get current weather conditions for any location",
     tags=["weather"],
     response_description="Current weather data for the specified location"
 )
-async def get_current_weather(
-    location: str = Query(..., description="City name, coordinates (lat,lon), or postal code"),
-    include_air_quality: bool = Query(False, description="Include air quality data"),
-):
+async def get_current_weather(request: WeatherRequest = Body(...)):
     server = create_server()
-    params: Dict[str, Any] = {"q": location}
-    if include_air_quality:
+    params: Dict[str, Any] = {"q": request.location}
+    if request.include_air_quality:
         params["aqi"] = "yes"
     data = await fetch(server, "current.json", params)
     return JSONResponse(server._format_current_weather(data))  # noqa: SLF001
 
 
-@app.get(
+@app.post(
     "/get_weather_forecast",
     summary="Get Weather Forecast",
     description="Get weather forecast for 1-10 days",
     tags=["weather"],
     response_description="Weather forecast data"
 )
-async def get_weather_forecast(
-    location: str = Query(..., description="City name, coordinates (lat,lon), or postal code"),
-    days: int = Query(3, ge=1, le=10, description="Number of forecast days (1-10)"),
-    include_air_quality: bool = Query(False, description="Include air quality data"),
-):
+async def get_weather_forecast(request: ForecastRequest = Body(...)):
     server = create_server()
-    params: Dict[str, Any] = {"q": location, "days": days}
-    if include_air_quality:
+    params: Dict[str, Any] = {"q": request.location, "days": request.days}
+    if request.include_air_quality:
         params["aqi"] = "yes"
     data = await fetch(server, "forecast.json", params)
     return JSONResponse(server._format_forecast(data))  # noqa: SLF001
 
 
-@app.get(
+@app.post(
     "/get_weather_history",
     summary="Get Weather History",
     description="Get historical weather data for specific dates",
     tags=["weather"],
     response_description="Historical weather data"
 )
-async def get_weather_history(
-    location: str = Query(..., description="City name, coordinates (lat,lon), or postal code"),
-    date: str = Query(..., description="Date in YYYY-MM-DD format"),
-    end_date: Optional[str] = Query(None, description="End date in YYYY-MM-DD format (optional)"),
-):
+async def get_weather_history(request: HistoryRequest = Body(...)):
     server = create_server()
-    params: Dict[str, Any] = {"q": location, "dt": date}
-    if end_date:
-        params["end_dt"] = end_date
+    params: Dict[str, Any] = {"q": request.location, "dt": request.date}
+    if request.end_date:
+        params["end_dt"] = request.end_date
     data = await fetch(server, "history.json", params)
     return JSONResponse(server._format_history(data))  # noqa: SLF001
 
 
-@app.get(
+@app.post(
     "/search_locations",
     summary="Search Locations",
     description="Search for locations by name",
     tags=["weather"],
     response_description="List of matching locations"
 )
-async def search_locations(
-    query: str = Query(..., description="Location name to search for"),
-):
+async def search_locations(request: SearchRequest = Body(...)):
     server = create_server()
-    params: Dict[str, Any] = {"q": query}
+    params: Dict[str, Any] = {"q": request.query}
     data = await fetch(server, "search.json", params)
     # Keep response consistent with MCP formatting for locations list
     locations = []
@@ -221,22 +241,19 @@ async def search_locations(
     return JSONResponse({"locations": locations})
 
 
-@app.get(
+@app.post(
     "/get_astronomy_data",
     summary="Get Astronomy Data",
     description="Get sunrise, sunset, moon phase, and other astronomy data",
     tags=["weather"],
     response_description="Astronomy data for the specified location"
 )
-async def get_astronomy_data(
-    location: str = Query(..., description="City name, coordinates (lat,lon), or postal code"),
-    date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format (optional, defaults to today)"),
-):
+async def get_astronomy_data(request: AstronomyRequest = Body(...)):
     from datetime import datetime  # local import to avoid polluting module
 
     server = create_server()
-    actual_date = date or datetime.now().strftime("%Y-%m-%d")
-    params: Dict[str, Any] = {"q": location, "dt": actual_date}
+    actual_date = request.date or datetime.now().strftime("%Y-%m-%d")
+    params: Dict[str, Any] = {"q": request.location, "dt": actual_date}
     data = await fetch(server, "astronomy.json", params)
     return JSONResponse(server._format_astronomy(data))  # noqa: SLF001
 
