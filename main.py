@@ -10,14 +10,23 @@ import sys
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(__file__))
 
-# Import app - this might fail but we'll handle it
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Import app - prefer http_bridge for OpenAPI Actions compatibility
 try:
-    # Use MCP HTTP bridge for Agent Builder MCP support
+    # Use HTTP bridge for OpenAPI Actions (this is what Agent Builder needs)
+    from http_bridge import app
+    logger.info("Using HTTP bridge for OpenAPI Actions")
+except ImportError:
+    # Fallback to MCP bridge if HTTP bridge not available
     try:
         from mcp_http_bridge import app
+        logger.info("Using MCP HTTP bridge")
     except ImportError:
-        # Fallback to regular HTTP bridge
-        from http_bridge import app
+        print("Error: Neither http_bridge nor mcp_http_bridge available", file=sys.stderr)
+        sys.exit(1)
 except Exception as e:
     print(f"Error importing app: {e}", file=sys.stderr)
     sys.exit(1)

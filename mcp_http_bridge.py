@@ -33,6 +33,15 @@ from mcp.types import (
 
 from weather_mcp_server import WeatherMCPServer
 
+# Also import HTTP bridge endpoints for OpenAPI Actions
+try:
+    from http_bridge import app as http_app
+    # Import the weather endpoints from http_bridge
+    HTTP_BRIDGE_AVAILABLE = True
+except ImportError:
+    HTTP_BRIDGE_AVAILABLE = False
+    logger.warning("HTTP bridge not available")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -215,6 +224,25 @@ async def call_tool(request_data: Dict[str, Any]):
             {"error": str(e)},
             status_code=500
         )
+
+
+# Include HTTP bridge endpoints for OpenAPI Actions compatibility
+if HTTP_BRIDGE_AVAILABLE:
+    # Mount HTTP bridge routes (but exclude root/healthz to avoid conflicts)
+    from fastapi import APIRouter
+    http_router = APIRouter()
+    
+    # Get routes from http_app that we want to include
+    for route in http_app.routes:
+        if hasattr(route, 'path') and route.path not in ['/', '/healthz']:
+            # Add the route to our app
+            app.add_api_route(
+                route.path,
+                route.endpoint,
+                methods=route.methods if hasattr(route, 'methods') else ['GET'],
+                name=route.name if hasattr(route, 'name') else None,
+                include_in_schema=True
+            )
 
 
 if __name__ == "__main__":
