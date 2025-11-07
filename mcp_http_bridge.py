@@ -10,6 +10,10 @@ import asyncio
 import logging
 from typing import Any, Dict
 
+# Configure logging early so it's available for import-time warnings
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,9 +45,6 @@ try:
 except ImportError:
     HTTP_BRIDGE_AVAILABLE = False
     logger.warning("HTTP bridge not available")
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Weather MCP Server HTTP Bridge",
