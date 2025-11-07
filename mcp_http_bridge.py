@@ -102,57 +102,60 @@ async def healthz():
     return JSONResponse({"status": "ok"})
 
 
-@app.get("/mcp")
-async def mcp_sse_endpoint(request: Request):
+class MCPASGIApp:
+    """ASGI app that exposes the MCP SSE transport at /mcp.
+
+    It passes scope, receive, and send to SseServerTransport.connect_sse.
     """
-    MCP Server-Sent Events endpoint for OpenAI Agent Builder
-    This exposes the MCP server over HTTP/SSE
-    """
-    if weather_server is None:
-        return JSONResponse(
-            {"error": "Server not initialized"},
-            status_code=503
-        )
-    
-    if not SSE_AVAILABLE:
-        return JSONResponse(
-            {"error": "SSE transport not available. Use /mcp/list_tools and /mcp/call_tool endpoints instead."},
-            status_code=501
-        )
-    
-    async def event_stream():
-        """Stream MCP events using SSE"""
+
+    def __init__(self):
+        self.transport_path = "/mcp"
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await JSONResponse({"error": "Unsupported scope type"}, status_code=400)(scope, receive, send)
+            return
+
+        if weather_server is None:
+            await JSONResponse({"error": "Server not initialized"}, status_code=503)(scope, receive, send)
+            return
+
+        if not SSE_AVAILABLE:
+            await JSONResponse(
+                {"error": "SSE transport not available. Use /mcp/list_tools and /mcp/call_tool endpoints instead."},
+                status_code=501,
+            )(scope, receive, send)
+            return
+
         try:
-            # Create SSE transport
-            transport = SseServerTransport("/mcp")
-            
-            # Initialize the server
+            transport = SseServerTransport(self.transport_path)
             init_options = InitializationOptions(
                 capabilities={"tools": {}},
                 server_name="weather-mcp-server",
-                server_version="1.0.0"
+                server_version="1.0.0",
             )
-            
-            # Run the server with SSE transport
-            async with transport.connect_sse(request) as streams:
-                await weather_server.server.run(
-                    streams[0],
-                    streams[1],
-                    init_options
-                )
-                
+
+            async with transport.connect_sse(scope, receive, send) as (read_stream, write_stream):
+                await weather_server.server.run(read_stream, write_stream, init_options)
         except Exception as e:
             logger.error(f"MCP SSE error: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
-    )
+            # Best effort error event for SSE clients
+            data = f"data: {json.dumps({'error': str(e)})}\n\n".encode()
+            await send({"type": "http.response.start", "status": 500, "headers": [(b"content-type", b"text/event-stream")]})
+            await send({"type": "http.response.body", "body": data, "more_body": False})
+
+
+# Mount the ASGI SSE endpoint at /mcp
+if SSE_AVAILABLE:
+    app.mount("/mcp", MCPASGIApp())
+else:
+    # Keep a plain endpoint to report lack of SSE when not available
+    @app.get("/mcp")
+    async def mcp_not_available():
+        return JSONResponse(
+            {"error": "SSE transport not available. Use /mcp/list_tools and /mcp/call_tool endpoints instead."},
+            status_code=501,
+        )
 
 
 @app.post("/mcp/list_tools")
